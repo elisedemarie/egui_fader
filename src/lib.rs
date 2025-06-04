@@ -26,7 +26,7 @@ enum SignalKind {
 ///
 /// E.g. The interval [-100, -30, -10, 0, 10] gives the first 25% of the interval to [-100, -30], the next 25% to [-30, -10] etc.
 ///
-/// New Fader instances are created with `Fader::mono()` or `Fader::stereo` depending on the signal
+/// New Fader instances are created with `Fader::mono()` or `Fader::stereo()` depending on the signal
 /// type.
 ///
 /// The default (and currently only) behaviour sets the level to `NEG_INFINITY` when the
