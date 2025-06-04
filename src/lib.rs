@@ -8,7 +8,7 @@ use egui::{Rect, Response, Sense, Ui, Vec2, Widget, pos2, vec2};
 const FADER_FINE_DRAG_RATIO: f32 = 0.2;
 const INFINITY: f32 = f32::INFINITY;
 
-pub enum SignalKind {
+enum SignalKind {
     Mono(f32),
     Stereo([f32; 2]),
 }
@@ -21,13 +21,12 @@ pub struct Fader<'a> {
     increments: Vec<f32>,
     handle_shape: Option<HandleShape>,
     neutral_level: f32,
-    y_padding: f32,
-    x_padding: f32,
     text_size: f32,
+    height: Option<f32>,
 }
 
 impl<'a> Fader<'a> {
-    pub fn new(signal: SignalKind, level: &'a mut f32) -> Self {
+    fn new(signal: SignalKind, level: &'a mut f32) -> Self {
         Self {
             signal,
             level,
@@ -35,10 +34,17 @@ impl<'a> Fader<'a> {
             increments: vec![-100.0, -30.0, -10.0, 0.0, 10.0],
             handle_shape: None,
             neutral_level: 0.0,
-            y_padding: 0.1,
-            x_padding: 0.1,
             text_size: 10.0,
+            height: None,
         }
+    }
+
+    pub fn mono(signal: f32, level: &'a mut f32) -> Self {
+        Self::new(SignalKind::Mono(signal), level)
+    }
+
+    pub fn stereo(signal: [f32; 2], level: &'a mut f32) -> Self {
+        Self::new(SignalKind::Stereo(signal), level)
     }
 
     #[inline]
@@ -60,18 +66,6 @@ impl<'a> Fader<'a> {
     #[inline]
     pub fn neutral_level(mut self, neutral_level: f32) -> Self {
         self.neutral_level = neutral_level;
-        self
-    }
-
-    #[inline]
-    pub fn y_padding(mut self, y_padding: f32) -> Self {
-        self.y_padding = y_padding;
-        self
-    }
-
-    #[inline]
-    pub fn x_padding(mut self, x_padding: f32) -> Self {
-        self.x_padding = x_padding;
         self
     }
 
@@ -135,6 +129,10 @@ impl<'a> Fader<'a> {
         lerp(position_range, normalised)
     }
 
+    fn text_padding(&self) -> f32 {
+        self.text_size * 0.25
+    }
+
     fn fader_interaction(&mut self, ui: &Ui, response: &Response) {
         if response.interact(Sense::click()).double_clicked() {
             self.set_to_neutral();
@@ -158,9 +156,9 @@ impl<'a> Fader<'a> {
     }
 
     fn fader_ui(&mut self, ui: &Ui, response: &Response) {
-        // Shrink rect by padding.
+        // Shrink rect by to allow for text underneath.
         let rect = response.rect;
-        let bottom_padding = rect.size().y * 0.1;
+        let bottom_padding = self.text_size + self.text_padding();
         let rect = rect
             .shrink2(vec2(0.0, bottom_padding))
             .translate(vec2(0.0, -bottom_padding * 0.5));
@@ -221,7 +219,7 @@ impl<'a> Fader<'a> {
 
         // Level text
         let level_text = format!("{:.1}", self.get_level());
-        let text_pos = rect.center_bottom();
+        let text_pos = rect.center_bottom() + vec2(0.0, self.text_padding());
         let text_anchor = Align2::CENTER_TOP;
         let font_id = FontId::proportional(self.text_size);
         let text_colour = ui.style().visuals.text_color();
@@ -303,8 +301,8 @@ impl<'a> Fader<'a> {
                     .rect_filled(left_signal, signal_corner, signal_style);
                 ui.painter()
                     .rect_filled(right_signal, signal_corner, signal_style);
-                let left_pos = pos2(left_x, rect.bottom());
-                let right_pos = pos2(right_x, rect.bottom());
+                let left_pos = pos2(left_x, rect.bottom() + self.text_padding());
+                let right_pos = pos2(right_x, rect.bottom() + self.text_padding());
                 let text_anchor = Align2::CENTER_TOP;
                 let font_id = FontId::proportional(self.text_size);
                 let text_colour = ui.style().visuals.text_color();
@@ -321,7 +319,10 @@ impl<'a> Fader<'a> {
         let width = 2.0
             * ui.text_style_height(&TextStyle::Body)
                 .at_least(ui.spacing().interact_size.x);
-        let size = vec2(width, 1.5 * ui.spacing().slider_width);
+        let height = self
+            .height
+            .unwrap_or_else(|| 1.5 * ui.spacing().slider_width);
+        let size = vec2(width, height);
         let mut response = ui.allocate_response(size, Sense::drag());
         self.fader_ui(ui, &response);
         if self.get_level() != old_level {
