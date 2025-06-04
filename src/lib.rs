@@ -1,4 +1,4 @@
-use egui::epaint;
+use egui::{Align2, FontId, NumExt, TextStyle, epaint};
 
 use egui::emath::OrderedFloat;
 use egui::style::HandleShape;
@@ -6,7 +6,7 @@ use egui::{Rangef, lerp, remap, remap_clamp};
 use egui::{Rect, Response, Sense, Ui, Vec2, Widget, pos2, vec2};
 
 const FADER_FINE_DRAG_RATIO: f32 = 0.2;
-const INFINITY: f32 = f32::INFINITY; 
+const INFINITY: f32 = f32::INFINITY;
 
 pub enum SignalKind {
     Mono(f32),
@@ -95,6 +95,10 @@ impl<'a> Fader<'a> {
         *self.level
     }
 
+    fn handle_radius(&self, rect: &Rect) -> f32 {
+        rect.width() / 2.5
+    }
+
     fn set_to_neutral(&mut self) {
         let min = self.increments[0];
         let max = self.increments[self.increments.len() - 1];
@@ -102,7 +106,7 @@ impl<'a> Fader<'a> {
     }
 
     fn position_range(&self, rect: &Rect, handle_shape: &HandleShape) -> Rangef {
-        let handle_radius = rect.width() / 2.5;
+        let handle_radius = self.handle_radius(rect);
         let handle_radius = match handle_shape {
             HandleShape::Circle => handle_radius,
             HandleShape::Rect { aspect_ratio } => handle_radius * aspect_ratio,
@@ -147,11 +151,13 @@ impl<'a> Fader<'a> {
     fn fader_ui(&mut self, ui: &Ui, response: &Response) {
         // Shrink rect by padding.
         let rect = response.rect;
-        let padding = rect.size() * vec2(2.0 * self.x_padding, 2.8 * self.y_padding);
-        let rect = rect.shrink2(padding);
+        let bottom_padding = rect.size().y * 0.1;
+        let rect = rect
+            .shrink2(vec2(0.0, bottom_padding))
+            .translate(vec2(0.0, -bottom_padding * 0.5));
 
-        // Divide response into thirds.
-        let (left, right) = rect.split_left_right_at_fraction(1.0 / 3.0);
+        // Divide response into three sections.
+        let (left, right) = rect.split_left_right_at_fraction(1.0 / 5.0);
         let (middle, right) = right.split_left_right_at_fraction(0.5);
         let rail_response = response.clone().with_new_rect(left);
         self.fader_interaction(ui, &rail_response);
@@ -164,7 +170,7 @@ impl<'a> Fader<'a> {
         // Rail for fader knob.
         let visuals = ui.style().interact(response);
         let rect = response.rect;
-        let rail_radius = 1.0;
+        let rail_radius = ui.spacing().slider_rail_height * 0.5;
         let rail_rect = Rect::from_min_max(
             pos2(rect.center().x - rail_radius, rect.top()),
             pos2(rect.center().x + rail_radius, rect.bottom()),
@@ -174,7 +180,7 @@ impl<'a> Fader<'a> {
         ui.painter().rect_filled(rail_rect, rail_corner, rail_style);
 
         // Fader knob.
-        let handle_radius = rect.width() / 3.0;
+        let handle_radius = self.handle_radius(&rect);
         let handle_shape = self
             .handle_shape
             .unwrap_or_else(|| ui.style().visuals.handle_shape);
@@ -205,13 +211,22 @@ impl<'a> Fader<'a> {
                 );
             }
         }
+
+        // Level text
+        let level_text = format!("{:.1}", self.get_level());
+        let text_pos = rect.center_bottom();
+        let text_anchor = Align2::CENTER_TOP;
+        let font_id = FontId::proportional(12.0);
+        let text_colour = ui.style().visuals.text_color();
+        ui.painter()
+            .text(text_pos, text_anchor, level_text, font_id, text_colour);
     }
 
     fn label_ui(&self, ui: &Ui, rect: Rect) {}
 
     fn signal_ui(&self, ui: &Ui, rect: Rect) {
         // Channel to display signal
-        let channel_radius = 1.0;
+        let channel_radius = ui.spacing().slider_rail_height * 0.5;
         let channel_corner = ui.style().visuals.widgets.inactive.corner_radius;
         let channel_style = ui.style().visuals.faint_bg_color;
         // Signal
@@ -268,13 +283,26 @@ impl<'a> Fader<'a> {
                     .rect_filled(left_signal, signal_corner, signal_style);
                 ui.painter()
                     .rect_filled(right_signal, signal_corner, signal_style);
+                let left_pos = pos2(left_x, rect.bottom());
+                let right_pos = pos2(right_x, rect.bottom());
+                let text_anchor = Align2::CENTER_TOP;
+                let font_id = FontId::proportional(12.0);
+                let text_colour = ui.style().visuals.text_color();
+                ui.painter()
+                    .text(left_pos, text_anchor, "L", font_id.clone(), text_colour);
+                ui.painter()
+                    .text(right_pos, text_anchor, "R", font_id.clone(), text_colour);
             }
         }
     }
 
     fn add_contents(&mut self, ui: &mut Ui) -> Response {
         let old_level = self.get_level();
-        let mut response = ui.allocate_response(self.size, Sense::drag());
+        let width = 2.0
+            * ui.text_style_height(&TextStyle::Body)
+                .at_least(ui.spacing().interact_size.x);
+        let size = vec2(width, 1.5 * ui.spacing().slider_width);
+        let mut response = ui.allocate_response(size, Sense::drag());
         self.fader_ui(ui, &response);
         if self.get_level() != old_level {
             response.mark_changed();
