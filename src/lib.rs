@@ -102,8 +102,8 @@ impl<'a> Fader<'a> {
         self
     }
 
-    /// Set the shape of the fader handle to a circle shape. 
-    /// The default value is set by [`egui::Ui.style().visuals.handle_shape`] but can be 
+    /// Set the shape of the fader handle to a circle shape.
+    /// The default value is set by [`egui::Ui.style().visuals.handle_shape`] but can be
     /// overwritten for this widget here.
     #[inline]
     pub fn circle_handle_shape(mut self) -> Self {
@@ -111,8 +111,8 @@ impl<'a> Fader<'a> {
         self
     }
 
-    /// Set the shape of the fader handle to a rect shape with some aspect ratio.. 
-    /// The default value is set by [`egui::Ui.style().visuals.handle_shape`] but can be 
+    /// Set the shape of the fader handle to a rect shape with some aspect ratio..
+    /// The default value is set by [`egui::Ui.style().visuals.handle_shape`] but can be
     /// overwritten for this widget here.
     #[inline]
     pub fn rect_handle_shape(mut self, aspect_ratio: f32) -> Self {
@@ -342,7 +342,7 @@ impl<'a> Fader<'a> {
                     .rect_filled(left_signal, signal_corner, signal_style);
                 ui.painter()
                     .rect_filled(right_signal, signal_corner, signal_style);
-                
+
                 // Text to label the left and right channels.
                 let left_pos = pos2(left_x, rect.bottom() + self.text_padding());
                 let right_pos = pos2(right_x, rect.bottom() + self.text_padding());
