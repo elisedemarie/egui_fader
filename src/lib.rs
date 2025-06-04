@@ -1,5 +1,3 @@
-use std::f32::INFINITY;
-
 use egui::epaint;
 
 use egui::emath::OrderedFloat;
@@ -8,6 +6,7 @@ use egui::{Rangef, lerp, remap, remap_clamp};
 use egui::{Rect, Response, Sense, Ui, Vec2, Widget, pos2, vec2};
 
 const FADER_FINE_DRAG_RATIO: f32 = 0.2;
+const INFINITY: f32 = f32::INFINITY; 
 
 pub enum SignalKind {
     Mono(f32),
@@ -76,6 +75,18 @@ impl<'a> Fader<'a> {
         self
     }
 
+    #[inline]
+    pub fn circle_handle_shape(mut self) -> Self {
+        self.handle_shape = Some(HandleShape::Circle);
+        self
+    }
+
+    #[inline]
+    pub fn rect_handle_shape(mut self, aspect_ratio: f32) -> Self {
+        self.handle_shape = Some(HandleShape::Rect { aspect_ratio });
+        self
+    }
+
     fn set_level(&mut self, level: f32) {
         *self.level = level
     }
@@ -110,7 +121,7 @@ impl<'a> Fader<'a> {
     }
 
     fn fader_interaction(&mut self, ui: &Ui, response: &Response) {
-        if response.double_clicked() {
+        if response.interact(Sense::click()).double_clicked() {
             self.set_to_neutral();
         };
         let rect = &response.rect;
@@ -127,7 +138,7 @@ impl<'a> Fader<'a> {
                 };
             });
             let centre = self
-                .position_from_value(self.get_level(), self.position_range(&rect, &handle_shape));
+                .position_from_value(self.get_level(), self.position_range(rect, &handle_shape));
             let new_value = self.value_from_position(centre + delta, position_range);
             self.set_level(new_value)
         }
@@ -153,7 +164,7 @@ impl<'a> Fader<'a> {
         // Rail for fader knob.
         let visuals = ui.style().interact(response);
         let rect = response.rect;
-        let rail_radius = 0.2;
+        let rail_radius = 1.0;
         let rail_rect = Rect::from_min_max(
             pos2(rect.center().x - rail_radius, rect.top()),
             pos2(rect.center().x + rail_radius, rect.bottom()),
@@ -163,7 +174,7 @@ impl<'a> Fader<'a> {
         ui.painter().rect_filled(rail_rect, rail_corner, rail_style);
 
         // Fader knob.
-        let handle_radius = 2.0;
+        let handle_radius = rect.width() / 3.0;
         let handle_shape = self
             .handle_shape
             .unwrap_or_else(|| ui.style().visuals.handle_shape);
@@ -198,7 +209,68 @@ impl<'a> Fader<'a> {
 
     fn label_ui(&self, ui: &Ui, rect: Rect) {}
 
-    fn signal_ui(&self, ui: &Ui, rect: Rect) {}
+    fn signal_ui(&self, ui: &Ui, rect: Rect) {
+        // Channel to display signal
+        let channel_radius = 1.0;
+        let channel_corner = ui.style().visuals.widgets.inactive.corner_radius;
+        let channel_style = ui.style().visuals.faint_bg_color;
+        // Signal
+        let signal_corner = ui.style().visuals.widgets.inactive.corner_radius;
+        let signal_style = ui.style().visuals.widgets.active.fg_stroke.color;
+        match self.signal {
+            SignalKind::Mono(signal) => {
+                let signal = normalised_from_value(signal, self.increments.clone());
+                let signal_height = rect.size().y * signal;
+                let signal_y = rect.bottom() - signal_height;
+                let channel_rect = Rect::from_min_max(
+                    pos2(rect.center().x - channel_radius, rect.top()),
+                    pos2(rect.center().x + channel_radius, rect.bottom()),
+                );
+                let signal_rect = Rect::from_min_size(
+                    pos2(rect.center().x - channel_radius, signal_y),
+                    vec2(2.0 * channel_radius, signal_height),
+                );
+                ui.painter()
+                    .rect_filled(channel_rect, channel_corner, channel_style);
+                ui.painter()
+                    .rect_filled(signal_rect, signal_corner, signal_style);
+            }
+            SignalKind::Stereo([left, right]) => {
+                let left = normalised_from_value(left, self.increments.clone());
+                let right = normalised_from_value(right, self.increments.clone());
+                let left_height = rect.size().y * left;
+                let right_height = rect.size().y * right;
+                let left_y = rect.bottom() - left_height;
+                let right_y = rect.bottom() - right_height;
+                let left_x = rect.left() + rect.size().x * 1.0 / 3.0;
+                let right_x = rect.left() + rect.size().x * 2.0 / 3.0;
+                let left_channel = Rect::from_min_max(
+                    pos2(left_x - channel_radius, rect.top()),
+                    pos2(left_x + channel_radius, rect.bottom()),
+                );
+                let right_channel = Rect::from_min_max(
+                    pos2(right_x - channel_radius, rect.top()),
+                    pos2(right_x + channel_radius, rect.bottom()),
+                );
+                let left_signal = Rect::from_min_size(
+                    pos2(left_x - channel_radius, left_y),
+                    vec2(2.0 * channel_radius, left_height),
+                );
+                let right_signal = Rect::from_min_size(
+                    pos2(right_x - channel_radius, right_y),
+                    vec2(2.0 * channel_radius, right_height),
+                );
+                ui.painter()
+                    .rect_filled(left_channel, channel_corner, channel_style);
+                ui.painter()
+                    .rect_filled(right_channel, channel_corner, channel_style);
+                ui.painter()
+                    .rect_filled(left_signal, signal_corner, signal_style);
+                ui.painter()
+                    .rect_filled(right_signal, signal_corner, signal_style);
+            }
+        }
+    }
 
     fn add_contents(&mut self, ui: &mut Ui) -> Response {
         let old_level = self.get_level();
