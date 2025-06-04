@@ -23,6 +23,7 @@ pub struct Fader<'a> {
     neutral_level: f32,
     y_padding: f32,
     x_padding: f32,
+    text_size: f32,
 }
 
 impl<'a> Fader<'a> {
@@ -31,13 +32,12 @@ impl<'a> Fader<'a> {
             signal,
             level,
             size: vec2(75.0, 200.0),
-            increments: vec![
-                -100.0, -50.0, -40.0, -30.0, -20.0, -10.0, -5.0, 0.0, 5.0, 10.0,
-            ],
+            increments: vec![-100.0, -30.0, -10.0, 0.0, 10.0],
             handle_shape: None,
             neutral_level: 0.0,
             y_padding: 0.1,
             x_padding: 0.1,
+            text_size: 10.0,
         }
     }
 
@@ -87,6 +87,12 @@ impl<'a> Fader<'a> {
         self
     }
 
+    #[inline]
+    pub fn text_size(mut self, text_size: f32) -> Self {
+        self.text_size = text_size;
+        self
+    }
+
     fn set_level(&mut self, level: f32) {
         *self.level = level
     }
@@ -97,6 +103,11 @@ impl<'a> Fader<'a> {
 
     fn handle_radius(&self, rect: &Rect) -> f32 {
         rect.width() / 2.5
+    }
+
+    fn handle_shape(&self, ui: &Ui) -> HandleShape {
+        self.handle_shape
+            .unwrap_or_else(|| ui.style().visuals.handle_shape)
     }
 
     fn set_to_neutral(&mut self) {
@@ -129,9 +140,7 @@ impl<'a> Fader<'a> {
             self.set_to_neutral();
         };
         let rect = &response.rect;
-        let handle_shape = self
-            .handle_shape
-            .unwrap_or_else(|| ui.style().visuals.handle_shape);
+        let handle_shape = self.handle_shape(ui);
         let position_range = self.position_range(rect, &handle_shape);
 
         if response.dragged() {
@@ -162,7 +171,7 @@ impl<'a> Fader<'a> {
         let rail_response = response.clone().with_new_rect(left);
         self.fader_interaction(ui, &rail_response);
         self.rail_ui(ui, &rail_response);
-        self.label_ui(ui, middle);
+        self.label_ui(ui, middle, &rail_response.rect);
         self.signal_ui(ui, right);
     }
 
@@ -181,9 +190,7 @@ impl<'a> Fader<'a> {
 
         // Fader knob.
         let handle_radius = self.handle_radius(&rect);
-        let handle_shape = self
-            .handle_shape
-            .unwrap_or_else(|| ui.style().visuals.handle_shape);
+        let handle_shape = self.handle_shape(ui);
         let center = pos2(
             rect.center().x,
             self.position_from_value(self.get_level(), self.position_range(&rect, &handle_shape)),
@@ -216,13 +223,26 @@ impl<'a> Fader<'a> {
         let level_text = format!("{:.1}", self.get_level());
         let text_pos = rect.center_bottom();
         let text_anchor = Align2::CENTER_TOP;
-        let font_id = FontId::proportional(12.0);
+        let font_id = FontId::proportional(self.text_size);
         let text_colour = ui.style().visuals.text_color();
         ui.painter()
             .text(text_pos, text_anchor, level_text, font_id, text_colour);
     }
 
-    fn label_ui(&self, ui: &Ui, rect: Rect) {}
+    fn label_ui(&self, ui: &Ui, rect: Rect, rail_rect: &Rect) {
+        let handle_shape = self.handle_shape(ui);
+        let text_anchor = Align2::CENTER_CENTER;
+        let font_id = FontId::proportional(self.text_size);
+        let text_colour = ui.style().visuals.text_color();
+        for value in self.increments.clone() {
+            let text_y =
+                self.position_from_value(value, self.position_range(rail_rect, &handle_shape));
+            let text_pos = pos2(rect.center().x, text_y);
+            let text = format!("{value}");
+            ui.painter()
+                .text(text_pos, text_anchor, text, font_id.clone(), text_colour);
+        }
+    }
 
     fn signal_ui(&self, ui: &Ui, rect: Rect) {
         // Channel to display signal
@@ -286,7 +306,7 @@ impl<'a> Fader<'a> {
                 let left_pos = pos2(left_x, rect.bottom());
                 let right_pos = pos2(right_x, rect.bottom());
                 let text_anchor = Align2::CENTER_TOP;
-                let font_id = FontId::proportional(12.0);
+                let font_id = FontId::proportional(self.text_size);
                 let text_colour = ui.style().visuals.text_color();
                 ui.painter()
                     .text(left_pos, text_anchor, "L", font_id.clone(), text_colour);
