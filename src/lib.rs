@@ -8,16 +8,46 @@ use egui::{Rect, Response, Sense, Ui, Vec2, Widget, pos2, vec2};
 const FADER_FINE_DRAG_RATIO: f32 = 0.2;
 const INFINITY: f32 = f32::INFINITY;
 
+/// Specifies the signal time the [`Fader`] will display.
 enum SignalKind {
     Mono(f32),
     Stereo([f32; 2]),
 }
 
-/// Widget for rendering audio level in dB.
+/// See the signal and control the level of some input.
+///
+/// Based on an audio fader.
+///
+/// These faders are not strictly linear or logarithmic, they use a piecewise function with more
+/// resolution around 0 and less as the value goes to negative infinity.
+/// This piecewise function is here defined by a vector of intervals. This is an ascending list
+/// whose values will be evenly distributed across the fader range. Values move linearly between
+/// the interval values making the function continuous across the whole range.
+///
+/// E.g. The interval [-100, -30, -10, 0, 10] gives the first 25% of the interval to [-100, -30], the next 25% to [-30, -10] etc.
+///
+/// New Fader instances are created with `Fader::mono()` or `Fader::stereo` depending on the signal
+/// type.
+///
+/// The default (and currently only) behaviour sets the level to `NEG_INFINITY` when the
+/// fader handle is at the bottom of the fader.
+/// The fader consists of three parts:
+///  -  The fader level showing the current level that can be interacted with.
+///  -  The text showing the increment values across the range.
+///  -  The signal showing the current level of the signal (either mono or stereo).
+///
+///  ```
+///  # egui::__run_test_ui(|ui| {
+///  # let mut my_level: f32 = -10.0;
+///  # let my_signal: f32 = -20.0;
+///  # ui.add(egui_fader::Fader::mono(&mut my_level, my_signal));
+///  # });
+///  ```
+///  Code has been adapted from [`egui::Slider`]
+///  https://docs.rs/egui/latest/egui/widgets/struct.Slider.html
 pub struct Fader<'a> {
-    signal: SignalKind,
     level: &'a mut f32,
-    size: Vec2,
+    signal: SignalKind,
     increments: Vec<f32>,
     handle_shape: Option<HandleShape>,
     neutral_level: f32,
@@ -26,11 +56,20 @@ pub struct Fader<'a> {
 }
 
 impl<'a> Fader<'a> {
-    fn new(signal: SignalKind, level: &'a mut f32) -> Self {
+    /// Creates a fader with only one channel.
+    pub fn mono(level: &'a mut f32, signal: f32) -> Self {
+        Self::new(level, SignalKind::Mono(signal))
+    }
+
+    /// Creates a fader with two channels.
+    pub fn stereo(level: &'a mut f32, signal: [f32; 2]) -> Self {
+        Self::new(level, SignalKind::Stereo(signal))
+    }
+
+    fn new(level: &'a mut f32, signal: SignalKind) -> Self {
         Self {
-            signal,
             level,
-            size: vec2(75.0, 200.0),
+            signal,
             increments: vec![-100.0, -30.0, -10.0, 0.0, 10.0],
             handle_shape: None,
             neutral_level: 0.0,
@@ -39,20 +78,13 @@ impl<'a> Fader<'a> {
         }
     }
 
-    pub fn mono(signal: f32, level: &'a mut f32) -> Self {
-        Self::new(SignalKind::Mono(signal), level)
-    }
-
-    pub fn stereo(signal: [f32; 2], level: &'a mut f32) -> Self {
-        Self::new(SignalKind::Stereo(signal), level)
-    }
-
-    #[inline]
-    pub fn size(mut self, size: Vec2) -> Self {
-        self.size = size;
-        self
-    }
-
+    /// Set the increments that will make up the faders range.
+    /// Increments must be ascending order and will be evenly spaced across the range of the fader.
+    /// E.g. the default increments `[-100, -30, -10, 0, 10]` split the range into four segments,
+    /// the first 25% of the fader goes from -100 to -30, the next 25% goes from -30 to -10. The
+    /// third from -10 to 0 and the final 25% from 0 to 10.
+    /// By default, when the fader handle is at the bottom of the fader the value will be set to
+    /// `NEG_INFINITY`. This does not need to be included in the intervals.
     #[inline]
     pub fn increments(mut self, increments: Vec<f32>) -> Self {
         debug_assert!(
@@ -63,24 +95,32 @@ impl<'a> Fader<'a> {
         self
     }
 
+    /// Set the neutral level that the fader handle will be set to when double clicked.
     #[inline]
     pub fn neutral_level(mut self, neutral_level: f32) -> Self {
         self.neutral_level = neutral_level;
         self
     }
 
+    /// Set the shape of the fader handle to a circle shape. 
+    /// The default value is set by [`egui::Ui.style().visuals.handle_shape`] but can be 
+    /// overwritten for this widget here.
     #[inline]
     pub fn circle_handle_shape(mut self) -> Self {
         self.handle_shape = Some(HandleShape::Circle);
         self
     }
 
+    /// Set the shape of the fader handle to a rect shape with some aspect ratio.. 
+    /// The default value is set by [`egui::Ui.style().visuals.handle_shape`] but can be 
+    /// overwritten for this widget here.
     #[inline]
     pub fn rect_handle_shape(mut self, aspect_ratio: f32) -> Self {
         self.handle_shape = Some(HandleShape::Rect { aspect_ratio });
         self
     }
 
+    /// Set the size of the text displayed on the widget.
     #[inline]
     pub fn text_size(mut self, text_size: f32) -> Self {
         self.text_size = text_size;
@@ -133,6 +173,7 @@ impl<'a> Fader<'a> {
         self.text_size * 0.25
     }
 
+    /// The interactive element of the fader.
     fn fader_interaction(&mut self, ui: &Ui, response: &Response) {
         if response.interact(Sense::click()).double_clicked() {
             self.set_to_neutral();
@@ -156,7 +197,7 @@ impl<'a> Fader<'a> {
     }
 
     fn fader_ui(&mut self, ui: &Ui, response: &Response) {
-        // Shrink rect by to allow for text underneath.
+        // Shrink rect to allow for text underneath.
         let rect = response.rect;
         let bottom_padding = self.text_size + self.text_padding();
         let rect = rect
@@ -174,7 +215,7 @@ impl<'a> Fader<'a> {
     }
 
     fn rail_ui(&self, ui: &Ui, response: &Response) {
-        // Rail for fader knob.
+        // Rail for fader handle.
         let visuals = ui.style().interact(response);
         let rect = response.rect;
         let rail_radius = ui.spacing().slider_rail_height * 0.5;
@@ -186,7 +227,7 @@ impl<'a> Fader<'a> {
         let rail_style = ui.visuals().widgets.inactive.bg_fill;
         ui.painter().rect_filled(rail_rect, rail_corner, rail_style);
 
-        // Fader knob.
+        // Fader handle.
         let handle_radius = self.handle_radius(&rect);
         let handle_shape = self.handle_shape(ui);
         let center = pos2(
@@ -301,6 +342,8 @@ impl<'a> Fader<'a> {
                     .rect_filled(left_signal, signal_corner, signal_style);
                 ui.painter()
                     .rect_filled(right_signal, signal_corner, signal_style);
+                
+                // Text to label the left and right channels.
                 let left_pos = pos2(left_x, rect.bottom() + self.text_padding());
                 let right_pos = pos2(right_x, rect.bottom() + self.text_padding());
                 let text_anchor = Align2::CENTER_TOP;
@@ -337,6 +380,16 @@ impl Widget for Fader<'_> {
         self.add_contents(ui)
     }
 }
+
+// ----------------------------------------------------------------------------
+
+// Helpers for converting fader range to/from normalized [0-1] range.
+
+// Convertion to piecewise interval range.
+
+// Always clamps.
+
+// Normalised values of 0.0 will return `NEG_INFINITY`
 
 fn normalised_from_value(value: f32, increments: Vec<f32>) -> f32 {
     if value == -INFINITY {
