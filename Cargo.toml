@@ -7,7 +7,7 @@ description = "Fader widget for egui applications."
 homepage = "https://github.com/elisedemarie/egui_fader"
 repository = "https://github.com/elisedemarie/egui_fader"
 readme = "README.md"
-keywords = ["egui", "ui", "widget", "slider", "fader", "audio"]
+keywords = ["egui", "ui", "widget", "slider", "audio"]
 categories = ["gui"]
 
 [[example]]
