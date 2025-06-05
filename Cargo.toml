@@ -2,6 +2,13 @@
 name = "egui_fader"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+description = "Fader widget for egui applications."
+homepage = "https://github.com/elisedemarie/egui_fader"
+repository = "https://github.com/elisedemarie/egui_fader"
+readme = "README.md"
+keywords = ["egui", "ui", "widget", "slider", "fader", "audio"]
+categories = ["gui"]
 
 [dependencies]
 dasp = "0.11.0"
