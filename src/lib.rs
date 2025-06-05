@@ -12,7 +12,7 @@ use peak::*;
 const FADER_FINE_DRAG_RATIO: f32 = 0.2;
 const INFINITY: f32 = f32::INFINITY;
 
-/// Specifies the signal time the [`Fader`] will display.
+/// Specifies the signal kind the [`Fader`] will display.
 #[derive(Copy, Clone, PartialEq)]
 enum SignalKind {
     Mono(f32),
