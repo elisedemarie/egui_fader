@@ -15,9 +15,7 @@ struct FaderExample {
 
 impl Default for FaderExample {
     fn default() -> Self {
-        Self {
-            level: -20.0
-        }
+        Self { level: -20.0 }
     }
 }
 
