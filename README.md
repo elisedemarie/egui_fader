@@ -5,6 +5,7 @@ Based on an audio fader, a widget that shows input signal and allows modifying t
 
 ![image](https://github.com/user-attachments/assets/4a6d68ec-c51c-4146-9ffe-2897d385832a)
 
-This widget also comes with some quality of life improvements:
-- The fader can be double clicked and the level will return to neutral (0 by default).
+## Other Features
+- The most recent peak is shown on fader.
+- Double click returns the level neutral (0 by default).
 - Fine dragging when holding down shift, control, or alt.
