@@ -1,4 +1,4 @@
-use egui::{epaint, Align2, Color32, CornerRadius, FontId, NumExt, TextStyle};
+use egui::{Align2, Color32, CornerRadius, FontId, NumExt, TextStyle, epaint};
 
 use egui::emath::OrderedFloat;
 use egui::style::HandleShape;
@@ -366,29 +366,31 @@ impl<'a> Fader<'a> {
             pos2(centre - channel_radius, signal_y),
             vec2(2.0 * channel_radius, signal_height),
         );
-        let peak_rect = Rect::from_center_size(pos2(rect.center().x, peak_y), Vec2::splat(2.0 * channel_radius));
+        let peak_rect =
+            Rect::from_center_size(pos2(centre, peak_y), Vec2::splat(2.0 * channel_radius));
         ui.painter()
             .rect_filled(channel_rect, channel_corner, channel_colour);
         ui.painter()
             .rect_filled(signal_rect, signal_corner, signal_colour);
-        ui.painter().rect_filled(peak_rect, peak_corner, peak_colour);
-
+        ui.painter()
+            .rect_filled(peak_rect, peak_corner, peak_colour);
     }
-
 
     fn signal_ui(&self, ui: &Ui, rect: Rect, rail_response: &Response) {
         match self.signal {
             SignalKind::Mono(signal) => {
-                let SignalKind::Mono(peak) = self.next_peak(ui, rail_response, self.signal) else {panic!()};
+                let SignalKind::Mono(peak) = self.next_peak(ui, rail_response, self.signal) else {
+                    panic!()
+                };
                 let centre = rect.center().x;
                 self.channel_ui(ui, &rect, signal, peak, centre);
             }
             SignalKind::Stereo([left, right]) => {
-                let SignalKind::Stereo([left_peak, right_peak]) = self.next_peak(ui, rail_response, self.signal) else {panic!()};
-                let left = normalised_from_value(left, self.increments.clone());
-                let left_peak = normalised_from_value(left_peak, self.increments.clone());
-                let right = normalised_from_value(right, self.increments.clone());
-                let right_peak = normalised_from_value(right_peak, self.increments.clone());
+                let SignalKind::Stereo([left_peak, right_peak]) =
+                    self.next_peak(ui, rail_response, self.signal)
+                else {
+                    panic!()
+                };
                 let left_x = rect.left() + rect.size().x * 1.0 / 3.0;
                 let right_x = rect.left() + rect.size().x * 2.0 / 3.0;
                 self.channel_ui(ui, &rect, left, left_peak, left_x);
@@ -428,7 +430,6 @@ impl<'a> Fader<'a> {
     }
 
     fn add_contents(&mut self, ui: &mut Ui) -> Response {
-
         let old_level = self.get_level();
         let width = 2.0
             * ui.text_style_height(&TextStyle::Body)
