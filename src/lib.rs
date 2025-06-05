@@ -1,17 +1,48 @@
-use egui::{Align2, FontId, NumExt, TextStyle, epaint};
+use egui::{Align2, Color32, CornerRadius, FontId, NumExt, TextStyle, epaint};
 
 use egui::emath::OrderedFloat;
 use egui::style::HandleShape;
 use egui::{Rangef, lerp, remap, remap_clamp};
 use egui::{Rect, Response, Sense, Ui, Vec2, Widget, pos2, vec2};
 
+mod peak;
+
+use peak::*;
+
 const FADER_FINE_DRAG_RATIO: f32 = 0.2;
 const INFINITY: f32 = f32::INFINITY;
 
 /// Specifies the signal time the [`Fader`] will display.
+#[derive(Copy, Clone, PartialEq)]
 enum SignalKind {
     Mono(f32),
     Stereo([f32; 2]),
+}
+
+/// Wrapper of [`PeakDetector`] to pass any variant of [`SignalKind`].
+#[derive(Clone, Debug)]
+enum FaderPeak {
+    Mono(PeakDetector),
+    Stereo([PeakDetector; 2]),
+}
+
+impl FaderPeak {
+    pub fn next(&mut self, signal: SignalKind) -> SignalKind {
+        match self {
+            Self::Mono(detector) => {
+                let SignalKind::Mono(signal) = signal else {
+                    panic!("FaderPeak variant must match SignalKind")
+                };
+                SignalKind::Mono(detector.next(signal))
+            }
+            Self::Stereo([left_detector, right_detector]) => {
+                let SignalKind::Stereo([left, right]) = signal else {
+                    panic!("FaderPeak variant must match SignalKind")
+                };
+                SignalKind::Stereo([left_detector.next(left), right_detector.next(right)])
+            }
+        }
+    }
 }
 
 /// See the signal and control the level of some input.
@@ -26,15 +57,16 @@ enum SignalKind {
 ///
 /// E.g. The interval [-100, -30, -10, 0, 10] gives the first 25% of the interval to [-100, -30], the next 25% to [-30, -10] etc.
 ///
-/// New Fader instances are created with `Fader::mono()` or `Fader::stereo` depending on the signal
+/// New Fader instances are created with `Fader::mono()` or `Fader::stereo()` depending on the signal
 /// type.
 ///
 /// The default (and currently only) behaviour sets the level to `NEG_INFINITY` when the
 /// fader handle is at the bottom of the fader.
-/// The fader consists of three parts:
+/// The fader consists of four parts:
 ///  -  The fader level showing the current level that can be interacted with.
 ///  -  The text showing the increment values across the range.
 ///  -  The signal showing the current level of the signal (either mono or stereo).
+///  -  A marker indicator showing the most recent peak signal value.
 ///
 ///  ```
 ///  # egui::__run_test_ui(|ui| {
@@ -53,6 +85,7 @@ pub struct Fader<'a> {
     neutral_level: f32,
     text_size: f32,
     height: Option<f32>,
+    peak_buffer_size: usize,
 }
 
 impl<'a> Fader<'a> {
@@ -75,6 +108,7 @@ impl<'a> Fader<'a> {
             neutral_level: 0.0,
             text_size: 10.0,
             height: None,
+            peak_buffer_size: 60,
         }
     }
 
@@ -124,6 +158,13 @@ impl<'a> Fader<'a> {
     #[inline]
     pub fn text_size(mut self, text_size: f32) -> Self {
         self.text_size = text_size;
+        self
+    }
+
+    /// Set the number of frames that will be stored in the peak buffer.
+    #[inline]
+    pub fn peak_buffer_size(mut self, peak_buffer_size: usize) -> Self {
+        self.peak_buffer_size = peak_buffer_size;
         self
     }
 
@@ -210,8 +251,8 @@ impl<'a> Fader<'a> {
         let rail_response = response.clone().with_new_rect(left);
         self.fader_interaction(ui, &rail_response);
         self.rail_ui(ui, &rail_response);
-        self.label_ui(ui, middle, &rail_response.rect);
-        self.signal_ui(ui, right);
+        self.label_ui(ui, middle, &rail_response);
+        self.signal_ui(ui, right, &rail_response);
     }
 
     fn rail_ui(&self, ui: &Ui, response: &Response) {
@@ -268,7 +309,8 @@ impl<'a> Fader<'a> {
             .text(text_pos, text_anchor, level_text, font_id, text_colour);
     }
 
-    fn label_ui(&self, ui: &Ui, rect: Rect, rail_rect: &Rect) {
+    fn label_ui(&self, ui: &Ui, rect: Rect, rail_response: &Response) {
+        let rail_rect = &rail_response.rect;
         let handle_shape = self.handle_shape(ui);
         let text_anchor = Align2::CENTER_CENTER;
         let font_id = FontId::proportional(self.text_size);
@@ -283,65 +325,76 @@ impl<'a> Fader<'a> {
         }
     }
 
-    fn signal_ui(&self, ui: &Ui, rect: Rect) {
-        // Channel to display signal
-        let channel_radius = ui.spacing().slider_rail_height * 0.5;
-        let channel_corner = ui.style().visuals.widgets.inactive.corner_radius;
-        let channel_style = ui.style().visuals.faint_bg_color;
-        // Signal
-        let signal_corner = ui.style().visuals.widgets.inactive.corner_radius;
-        let signal_style = ui.style().visuals.widgets.active.fg_stroke.color;
+    fn channel_style(&self, ui: &Ui) -> (CornerRadius, Color32) {
+        let corner = ui.style().visuals.widgets.inactive.corner_radius;
+        let colour = ui.style().visuals.faint_bg_color;
+        (corner, colour)
+    }
+
+    fn signal_style(&self, ui: &Ui) -> (CornerRadius, Color32) {
+        let corner = ui.style().visuals.widgets.inactive.corner_radius;
+        let colour = ui.style().visuals.widgets.active.fg_stroke.color;
+        (corner, colour)
+    }
+
+    fn peak_style(&self, ui: &Ui) -> (CornerRadius, Color32) {
+        let corner = ui.style().visuals.widgets.active.corner_radius;
+        let colour = ui.style().visuals.widgets.inactive.fg_stroke.color;
+        (corner, colour)
+    }
+
+    fn channel_radius(&self, ui: &Ui) -> f32 {
+        ui.spacing().slider_rail_height * 0.5
+    }
+
+    fn channel_ui(&self, ui: &Ui, rect: &Rect, signal: f32, peak: f32, centre: f32) {
+        let (channel_corner, channel_colour) = self.channel_style(ui);
+        let (signal_corner, signal_colour) = self.signal_style(ui);
+        let (peak_corner, peak_colour) = self.peak_style(ui);
+        let channel_radius = self.channel_radius(ui);
+        let signal = normalised_from_value(signal, self.increments.clone());
+        let peak = normalised_from_value(peak, self.increments.clone());
+        let peak_height = rect.size().y * peak;
+        let signal_height = rect.size().y * signal;
+        let signal_y = rect.bottom() - signal_height;
+        let peak_y = rect.bottom() - peak_height;
+        let channel_rect = Rect::from_min_max(
+            pos2(centre - channel_radius, rect.top()),
+            pos2(centre + channel_radius, rect.bottom()),
+        );
+        let signal_rect = Rect::from_min_size(
+            pos2(centre - channel_radius, signal_y),
+            vec2(2.0 * channel_radius, signal_height),
+        );
+        let peak_rect =
+            Rect::from_center_size(pos2(centre, peak_y), Vec2::splat(2.0 * channel_radius));
+        ui.painter()
+            .rect_filled(channel_rect, channel_corner, channel_colour);
+        ui.painter()
+            .rect_filled(signal_rect, signal_corner, signal_colour);
+        ui.painter()
+            .rect_filled(peak_rect, peak_corner, peak_colour);
+    }
+
+    fn signal_ui(&self, ui: &Ui, rect: Rect, rail_response: &Response) {
         match self.signal {
             SignalKind::Mono(signal) => {
-                let signal = normalised_from_value(signal, self.increments.clone());
-                let signal_height = rect.size().y * signal;
-                let signal_y = rect.bottom() - signal_height;
-                let channel_rect = Rect::from_min_max(
-                    pos2(rect.center().x - channel_radius, rect.top()),
-                    pos2(rect.center().x + channel_radius, rect.bottom()),
-                );
-                let signal_rect = Rect::from_min_size(
-                    pos2(rect.center().x - channel_radius, signal_y),
-                    vec2(2.0 * channel_radius, signal_height),
-                );
-                ui.painter()
-                    .rect_filled(channel_rect, channel_corner, channel_style);
-                ui.painter()
-                    .rect_filled(signal_rect, signal_corner, signal_style);
+                let SignalKind::Mono(peak) = self.next_peak(ui, rail_response, self.signal) else {
+                    panic!()
+                };
+                let centre = rect.center().x;
+                self.channel_ui(ui, &rect, signal, peak, centre);
             }
             SignalKind::Stereo([left, right]) => {
-                let left = normalised_from_value(left, self.increments.clone());
-                let right = normalised_from_value(right, self.increments.clone());
-                let left_height = rect.size().y * left;
-                let right_height = rect.size().y * right;
-                let left_y = rect.bottom() - left_height;
-                let right_y = rect.bottom() - right_height;
+                let SignalKind::Stereo([left_peak, right_peak]) =
+                    self.next_peak(ui, rail_response, self.signal)
+                else {
+                    panic!()
+                };
                 let left_x = rect.left() + rect.size().x * 1.0 / 3.0;
                 let right_x = rect.left() + rect.size().x * 2.0 / 3.0;
-                let left_channel = Rect::from_min_max(
-                    pos2(left_x - channel_radius, rect.top()),
-                    pos2(left_x + channel_radius, rect.bottom()),
-                );
-                let right_channel = Rect::from_min_max(
-                    pos2(right_x - channel_radius, rect.top()),
-                    pos2(right_x + channel_radius, rect.bottom()),
-                );
-                let left_signal = Rect::from_min_size(
-                    pos2(left_x - channel_radius, left_y),
-                    vec2(2.0 * channel_radius, left_height),
-                );
-                let right_signal = Rect::from_min_size(
-                    pos2(right_x - channel_radius, right_y),
-                    vec2(2.0 * channel_radius, right_height),
-                );
-                ui.painter()
-                    .rect_filled(left_channel, channel_corner, channel_style);
-                ui.painter()
-                    .rect_filled(right_channel, channel_corner, channel_style);
-                ui.painter()
-                    .rect_filled(left_signal, signal_corner, signal_style);
-                ui.painter()
-                    .rect_filled(right_signal, signal_corner, signal_style);
+                self.channel_ui(ui, &rect, left, left_peak, left_x);
+                self.channel_ui(ui, &rect, right, right_peak, right_x);
 
                 // Text to label the left and right channels.
                 let left_pos = pos2(left_x, rect.bottom() + self.text_padding());
@@ -355,6 +408,25 @@ impl<'a> Fader<'a> {
                     .text(right_pos, text_anchor, "R", font_id.clone(), text_colour);
             }
         }
+    }
+
+    /// Get the peak from the recent buffer.
+    fn next_peak(&self, ui: &Ui, response: &Response, signal: SignalKind) -> SignalKind {
+        let id = response.id.with("peak");
+        ui.memory_mut(|mem| {
+            let queue = mem
+                .data
+                .get_temp_mut_or_insert_with::<FaderPeak>(id, || match signal {
+                    SignalKind::Mono(..) => {
+                        FaderPeak::Mono(PeakDetector::new(self.peak_buffer_size))
+                    }
+                    SignalKind::Stereo(..) => FaderPeak::Stereo([
+                        PeakDetector::new(self.peak_buffer_size),
+                        PeakDetector::new(self.peak_buffer_size),
+                    ]),
+                });
+            queue.next(signal)
+        })
     }
 
     fn add_contents(&mut self, ui: &mut Ui) -> Response {
