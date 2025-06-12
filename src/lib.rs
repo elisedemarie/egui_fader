@@ -176,8 +176,12 @@ impl<'a> Fader<'a> {
         *self.level
     }
 
-    fn handle_radius(&self, rect: &Rect) -> f32 {
-        rect.width() / 2.5
+    fn handle_radius(&self, rect: &Rect, handle_shape: &HandleShape) -> f32 {
+        let handle_radius = rect.width() / 2.5;
+        match handle_shape {
+            HandleShape::Circle => handle_radius,
+            HandleShape::Rect { aspect_ratio } => handle_radius * aspect_ratio,
+        }
     }
 
     fn handle_shape(&self, ui: &Ui) -> HandleShape {
@@ -191,13 +195,8 @@ impl<'a> Fader<'a> {
         self.set_level(self.neutral_level.clamp(min, max))
     }
 
-    fn position_range(&self, rect: &Rect, handle_shape: &HandleShape) -> Rangef {
-        let handle_radius = self.handle_radius(rect);
-        let handle_radius = match handle_shape {
-            HandleShape::Circle => handle_radius,
-            HandleShape::Rect { aspect_ratio } => handle_radius * aspect_ratio,
-        };
-        rect.y_range().shrink(handle_radius).flip()
+    fn position_range(&self, rect: &Rect, object_radius: f32) -> Rangef {
+        rect.y_range().shrink(object_radius).flip()
     }
 
     fn value_from_position(&self, position: f32, position_range: Rangef) -> f32 {
@@ -221,7 +220,8 @@ impl<'a> Fader<'a> {
         };
         let rect = &response.rect;
         let handle_shape = self.handle_shape(ui);
-        let position_range = self.position_range(rect, &handle_shape);
+        let handle_radius = self.handle_radius(rect, &handle_shape);
+        let position_range = self.position_range(rect, handle_radius);
 
         if response.dragged() {
             let mut delta = response.drag_delta().y;
@@ -231,7 +231,7 @@ impl<'a> Fader<'a> {
                 };
             });
             let centre = self
-                .position_from_value(self.get_level(), self.position_range(rect, &handle_shape));
+                .position_from_value(self.get_level(), self.position_range(rect, handle_radius));
             let new_value = self.value_from_position(centre + delta, position_range);
             self.set_level(new_value)
         }
@@ -269,11 +269,11 @@ impl<'a> Fader<'a> {
         ui.painter().rect_filled(rail_rect, rail_corner, rail_style);
 
         // Fader handle.
-        let handle_radius = self.handle_radius(&rect);
         let handle_shape = self.handle_shape(ui);
+        let handle_radius = self.handle_radius(&rect, &handle_shape);
         let center = pos2(
             rect.center().x,
-            self.position_from_value(self.get_level(), self.position_range(&rect, &handle_shape)),
+            self.position_from_value(self.get_level(), self.position_range(&rect, handle_radius)),
         );
 
         match handle_shape {
@@ -312,12 +312,13 @@ impl<'a> Fader<'a> {
     fn label_ui(&self, ui: &Ui, rect: Rect, rail_response: &Response) {
         let rail_rect = &rail_response.rect;
         let handle_shape = self.handle_shape(ui);
+        let handle_radius = self.handle_radius(&rect, &handle_shape);
         let text_anchor = Align2::CENTER_CENTER;
         let font_id = FontId::proportional(self.text_size);
         let text_colour = ui.style().visuals.text_color();
         for value in self.increments.clone() {
             let text_y =
-                self.position_from_value(value, self.position_range(rail_rect, &handle_shape));
+                self.position_from_value(value, self.position_range(rail_rect, handle_radius));
             let text_pos = pos2(rect.center().x, text_y);
             let text = format!("{value}");
             ui.painter()
@@ -353,11 +354,9 @@ impl<'a> Fader<'a> {
         let (peak_corner, peak_colour) = self.peak_style(ui);
         let channel_radius = self.channel_radius(ui);
         let signal = normalised_from_value(signal, self.increments.clone());
-        let peak = normalised_from_value(peak, self.increments.clone());
-        let peak_height = rect.size().y * peak;
+        let peak_y = self.position_from_value(peak, self.position_range(rect, channel_radius));
         let signal_height = rect.size().y * signal;
         let signal_y = rect.bottom() - signal_height;
-        let peak_y = rect.bottom() - peak_height;
         let channel_rect = Rect::from_min_max(
             pos2(centre - channel_radius, rect.top()),
             pos2(centre + channel_radius, rect.bottom()),
