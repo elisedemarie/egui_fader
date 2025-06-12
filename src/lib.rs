@@ -328,7 +328,7 @@ impl<'a> Fader<'a> {
             let text = if value == *self.increments.first().unwrap() {
                 // Account for the small infinity symbol.
                 font_id = FontId::proportional(self.text_size * 1.5);
-                format!("-∞")
+                "-∞".to_string()
             } else {
                 format!("{value}")
             };
