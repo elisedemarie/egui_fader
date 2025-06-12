@@ -319,13 +319,19 @@ impl<'a> Fader<'a> {
         let rail_rect = &rail_response.rect;
         let handle_shape = self.handle_shape(ui);
         let text_anchor = Align2::CENTER_CENTER;
-        let font_id = FontId::proportional(self.text_size);
         let text_colour = ui.style().visuals.text_color();
         for value in self.increments.clone() {
+            let mut font_id = FontId::proportional(self.text_size);
             let text_y =
                 self.position_from_value(value, self.position_range(rail_rect, &handle_shape));
             let text_pos = pos2(rect.center().x, text_y);
-            let text = format!("{value}");
+            let text = if value == *self.increments.first().unwrap() {
+                // Account for the small infinity symbol.
+                font_id = FontId::proportional(self.text_size * 1.5);
+                format!("-∞")
+            } else {
+                format!("{value}")
+            };
             ui.painter()
                 .text(text_pos, text_anchor, text, font_id.clone(), text_colour);
         }
