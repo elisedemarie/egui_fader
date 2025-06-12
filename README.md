@@ -7,5 +7,5 @@ Based on an audio fader, a widget that shows input signal and allows modifying t
 
 ## Other Features
 - The most recent peak is shown on the fader.
-- Double click returns the level neutral (0 by default).
+- Double click returns the level to neutral (0 by default).
 - Fine dragging when holding down shift, control, or alt.
