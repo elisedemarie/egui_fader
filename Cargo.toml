@@ -1,6 +1,6 @@
 [package]
 name = "egui_fader"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 license = "MIT"
 description = "Fader widget for egui applications."
@@ -15,9 +15,6 @@ name = "example_fader"
 path = "example/example_fader.rs"
 
 [dependencies]
-dasp = "0.11.0"
-dasp_frame = "0.11.0"
-dasp_signal = "0.11.0"
 egui = "0.31.1"
 
 [dev-dependencies]
