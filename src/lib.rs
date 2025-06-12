@@ -75,6 +75,7 @@ impl FaderPeak {
 ///  # ui.add(egui_fader::Fader::mono(&mut my_level, my_signal));
 ///  # });
 ///  ```
+///
 ///  Code has been adapted from [`egui::Slider`]
 ///  https://docs.rs/egui/latest/egui/widgets/struct.Slider.html
 pub struct Fader<'a> {
@@ -137,7 +138,7 @@ impl<'a> Fader<'a> {
     }
 
     /// Set the shape of the fader handle to a circle shape.
-    /// The default value is set by [`egui::Ui.style().visuals.handle_shape`] but can be
+    /// The default value is set by `egui::Ui.style().visuals.handle_shape` but can be
     /// overwritten for this widget here.
     #[inline]
     pub fn circle_handle_shape(mut self) -> Self {
@@ -146,7 +147,7 @@ impl<'a> Fader<'a> {
     }
 
     /// Set the shape of the fader handle to a rect shape with some aspect ratio..
-    /// The default value is set by [`egui::Ui.style().visuals.handle_shape`] but can be
+    /// The default value is set by `egui::Ui.style().visuals.handle_shape` but can be
     /// overwritten for this widget here.
     #[inline]
     pub fn rect_handle_shape(mut self, aspect_ratio: f32) -> Self {
@@ -214,6 +215,7 @@ impl<'a> Fader<'a> {
         self.text_size * 0.25
     }
 
+    // Keep peak shape within the channel.
     fn clamp_peak(&self, rect: &Rect, peak: f32, radius: f32) -> f32 {
         peak.clamp(rect.top() + radius, rect.bottom() - radius)
     }
